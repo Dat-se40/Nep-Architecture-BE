@@ -150,4 +150,5 @@ vite.config.ts.timestamp-*
 .turbo
 
 
-docs/
+# Local Markdown source documents; API specs in docs/ are versioned.
+docs/md/

@@ -1,7 +1,8 @@
 # Nep-Architecture-BE
 
 Backend Express (CommonJS), PostgreSQL trên Supabase và Prisma ORM 7.
-Mô hình dữ liệu được chuyển từ `docs/HUONG-DAN-BACKEND.md`.
+Mô hình dữ liệu được chuyển từ tài liệu local `docs/md/HUONG-DAN-BACKEND.md`
+(thư mục `docs/md/` không đưa vào Git).
 
 ## Cài đặt
 
@@ -78,6 +79,25 @@ phỏng, không tạo tài khoản hoặc thay đổi dữ liệu thật. Cần 
 
 Tham khảo: [Khởi tạo JavaScript client](https://supabase.com/docs/reference/javascript/initializing),
 [Xác minh access token bằng getUser](https://supabase.com/docs/reference/javascript/auth-getuser).
+
+## Tài liệu API với Scalar
+
+Chạy BE bằng `npm run dev`, sau đó mở [Scalar API Reference](http://localhost:8080/docs).
+File OpenAPI JSON ở [http://localhost:8080/openapi.json](http://localhost:8080/openapi.json).
+Nếu đổi `PORT`, dùng cổng tương ứng. Trang tài liệu tải giao diện Scalar từ CDN,
+còn các request thử API gửi tới chính BE đang mở tài liệu.
+
+Tài liệu gồm health, auth, thư viện công khai, quản trị công trình/người thiết kế
+và upload ảnh. Để thử API cần đăng nhập, nhập **access_token của phiên Supabase**
+vào Bearer Auth trong Scalar; không nhập publishable key hay secret key. API quản
+trị vẫn yêu cầu UUID có quyền admin. Các request tạo/sửa/gỡ/upload thay đổi dữ
+liệu thật; token nhập trong Scalar không được cấu hình lưu qua lần tải lại trang.
+
+Spec nằm trong `docs/openapi.js`. Schema request tạo/sửa công trình và tạo người
+thiết kế lấy từ Zod trong `validation/projects.js`; khi thêm endpoint hoặc đổi
+response/query, cập nhật phần tương ứng trong spec.
+
+Tích hợp theo [tài liệu Scalar cho Express](https://scalar.com/products/api-references/integrations/express).
 
 ## API công trình
 

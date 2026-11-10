@@ -7,6 +7,8 @@ const createAuthRouter = require('./routes/auth');
 const { createPublicProjectsRouter, createAdminProjectsRouter } = require('./routes/projects');
 const createMediaRouter = require('./routes/media');
 const errorHandler = require('./middleware/error-handler');
+const { apiReference } = require('@scalar/express-api-reference');
+const openapi = require('./docs/openapi');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -17,6 +19,14 @@ app.use(express.json({ limit: '1mb' }));
 app.get("/", (req, res) => {
   res.json({ status: 'ok' });
 });
+
+app.get('/openapi.json', (req, res) => res.json(openapi));
+app.get('/docs', apiReference({
+  url: '/openapi.json',
+  pageTitle: 'Nép API Reference',
+  persistAuth: false,
+  telemetry: false,
+}));
 
 app.use('/api/auth', createAuthRouter(supabase));
 app.use('/api/projects', createPublicProjectsRouter(db));
