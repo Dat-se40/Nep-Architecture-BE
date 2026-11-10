@@ -1,13 +1,20 @@
 
 const db = require('./configuration/database');
 const express = require("express");
+const cors = require('cors');
+const supabase = require('./configuration/supabase');
+const createAuthRouter = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.get("/", (req, res) => {
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 
+app.get("/", (req, res) => {
+  res.json({ status: 'ok' });
 });
+
+app.use('/api/auth', createAuthRouter(supabase));
 
 async function start() {
   await db.$connect();

@@ -25,6 +25,51 @@ Prisma CLI ưu tiên `DIRECT_URL`, rồi `DATABASE_URL`, cuối cùng `DB_URL`.
 Ứng dụng dùng `DATABASE_URL` hoặc `DB_URL`. Mật khẩu trong URL phải được URL-encode.
 Không đưa các chuỗi kết nối này vào frontend.
 
+## Xác thực với Supabase Auth
+
+Express dùng SDK JavaScript `@supabase/supabase-js`. Bổ sung vào `.env`:
+
+```dotenv
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+FRONTEND_URL=http://localhost:5173
+```
+
+`FRONTEND_URL` phải khớp origin thực tế của frontend để gọi API qua CORS.
+Client trong `configuration/supabase.js` xác minh từng access token với Supabase
+bằng `getUser(token)`; không lưu hay dùng chung phiên đăng nhập giữa các request.
+Google Client Secret được cấu hình ở Supabase Dashboard. Publishable key được
+dùng cho luồng này; secret key và JWKS URL chưa cần cho việc xác minh qua `getUser`.
+
+Frontend đăng nhập Google hoặc email qua Supabase, lấy access token của phiên
+rồi gọi BE:
+
+```js
+const response = await fetch('http://localhost:8080/api/auth/me', {
+  headers: { Authorization: `Bearer ${session.access_token}` },
+});
+const result = await response.json();
+```
+
+`GET /api/auth/me` trả `{ "user": { "id": "...", "email": "..." } }` sau khi
+xác minh. Trả `401` nếu thiếu, sai hoặc hết hạn token; trả `503` khi dịch vụ xác
+thực tạm thời không khả dụng. API này kiểm tra danh tính Supabase, không tạo hồ
+sơ `nep.profiles`. Các API nghiệp vụ sẽ dùng `req.user.id` để truy vấn hồ sơ và
+kiểm tra quyền sở hữu; không lấy role từ `user_metadata`.
+
+```sh
+npm run auth:check
+npm test
+```
+
+`auth:check` kiểm tra project URL/publishable key và trạng thái Google provider
+bằng một yêu cầu chỉ đọc. `npm test` kiểm tra API xác thực với Supabase được mô
+phỏng, không tạo tài khoản hoặc thay đổi dữ liệu thật. Cần thử đăng nhập từ FE
+để xác nhận đầy đủ cấu hình OAuth, redirect URL và token thực tế.
+
+Tham khảo: [Khởi tạo JavaScript client](https://supabase.com/docs/reference/javascript/initializing),
+[Xác minh access token bằng getUser](https://supabase.com/docs/reference/javascript/auth-getuser).
+
 ## Khởi tạo database
 
 Migration đầu tiên dành cho database Supabase mới: `auth.users` và các role
