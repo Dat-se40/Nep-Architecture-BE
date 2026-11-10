@@ -5,9 +5,10 @@ function errorHandler(error, req, res, next) {
     return res.status(400).json({ error: 'Dữ liệu chưa hợp lệ.', fields: error.flatten().fieldErrors });
   }
   if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON không hợp lệ.' });
-  if (error.type === 'entity.too.large') {
+  if (error.type === 'entity.too.large' || error.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: 'Tệp hoặc dữ liệu vượt quá kích thước cho phép.' });
   }
+  if (error.name === 'MulterError') return res.status(400).json({ error: 'Chỉ gửi một ảnh trong trường image.' });
   if (error.status) return res.status(error.status).json({ error: error.message });
   if (error.code === 'P2002') return res.status(409).json({ error: 'Slug hoặc mã này đã tồn tại.' });
   if (error.code === 'P2003') return res.status(400).json({ error: 'Người thiết kế hoặc ảnh được chọn không tồn tại.' });

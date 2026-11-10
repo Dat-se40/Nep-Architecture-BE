@@ -5,6 +5,7 @@ const cors = require('cors');
 const supabase = require('./configuration/supabase');
 const createAuthRouter = require('./routes/auth');
 const { createPublicProjectsRouter, createAdminProjectsRouter } = require('./routes/projects');
+const createMediaRouter = require('./routes/media');
 const errorHandler = require('./middleware/error-handler');
 
 const app = express();
@@ -19,6 +20,7 @@ app.get("/", (req, res) => {
 
 app.use('/api/auth', createAuthRouter(supabase));
 app.use('/api/projects', createPublicProjectsRouter(db));
+app.use('/api/admin/media', createMediaRouter(db, supabase));
 app.use('/api/admin', createAdminProjectsRouter(db, supabase));
 app.use((req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 app.use(errorHandler);

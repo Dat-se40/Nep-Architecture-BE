@@ -97,6 +97,8 @@ UUID với Edge Function `admin-ids` ở mỗi request.
 - `PATCH /api/admin/projects/:slug`: sửa nội dung, trạng thái và gallery.
 - `DELETE /api/admin/projects/:slug`: gỡ về `archived`, giữ dữ liệu và liên kết.
 - `POST /api/admin/creators`: tạo người thiết kế để chọn khi nhập công trình.
+- `POST /api/admin/media/images`: upload một ảnh trong multipart field `image`,
+  kèm `alt`, `credit` tùy chọn; trả ID ảnh dạng chuỗi để đưa vào `imageIds`.
 
 Payload tạo công trình gồm `slug`, `name`, `creatorId`, `type`, `style`, `city`.
 Các trường tùy chọn: `area`, `floors`, `beds`, `year`, `story`, `status`,
@@ -107,7 +109,7 @@ chưa đặt thời gian, server dùng thời điểm hiện tại; ngày trong 
 
 Trong FE mở `/#/admin/projects`, hoặc vào Tài khoản → Quản lý công trình bằng
 tài khoản có UUID trong danh sách admin. Màn hình hỗ trợ tạo người thiết kế,
-tạo/sửa/gỡ công trình và đổi thứ tự ảnh đã có trong thư viện. Trang chủ, danh sách và chi
+tạo/sửa/gỡ công trình, tải ảnh và đổi thứ tự ảnh. Trang chủ, danh sách và chi
 tiết công trình đọc API thật; database rỗng hiển thị trạng thái chưa có nội dung.
 
 ```sh
@@ -117,6 +119,54 @@ npm test
 
 `projects:check` dùng database hiện tại và chỉ đọc dữ liệu. Test CRUD dùng
 PostgreSQL tạm qua PGlite và Prisma, không tạo công trình trong Supabase thật.
+
+## Cấu hình Cloudflare R2 cho ảnh công trình
+
+Giai đoạn này chỉ admin upload ảnh công khai qua BE. Cơ chế ảnh riêng tư cho hồ
+sơ người dùng chờ duyệt sẽ được làm cùng luồng submissions.
+
+1. Dùng bucket R2 gốc hiện có, ví dụ `nep-architecture`. Thư mục `nep-media`
+   bên trong là prefix của object key, không phải tên bucket.
+2. Mở bucket → **Settings → Public Development URL → Enable**, lấy URL
+   `https://pub-....r2.dev` để thử local. Production dùng custom domain.
+3. Ở trang R2 → **Manage R2 API Tokens**, tạo token **Object Read & Write**
+   và giới hạn vào đúng bucket. Lưu **Access Key ID** và **Secret Access Key**.
+4. Lấy **Account ID** của tài khoản Cloudflare chứa bucket. Điền vào `.env` BE:
+
+```dotenv
+R2_ACCOUNT_ID=YOUR_CLOUDFLARE_ACCOUNT_ID
+R2_ACCESS_KEY_ID=YOUR_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY=YOUR_SECRET_ACCESS_KEY
+R2_MEDIA_BUCKET=YOUR_EXISTING_BUCKET_NAME
+R2_MEDIA_PREFIX=nep-media
+R2_PUBLIC_BASE_URL=https://pub-YOUR_BUCKET.r2.dev
+# Để trống với bucket mặc định; chỉ điền khi cần endpoint riêng theo jurisdiction.
+R2_ENDPOINT=
+```
+
+Ảnh mới được lưu dưới `nep-media/projects/<UUID>.webp` khi dùng prefix trên.
+`R2_PUBLIC_BASE_URL` là URL đọc ảnh công khai của bucket gốc, không nối thêm
+`nep-media` vào biến này. Endpoint S3 được BE ghép từ
+Account ID, không dùng URL công khai làm endpoint S3. Nếu chọn jurisdiction
+riêng, dùng endpoint tương ứng theo tài liệu Cloudflare. Giữ toàn bộ Access Key
+ở BE. FE gửi ảnh đến Express nên không cần cấu hình CORS PUT trực tiếp trên R2.
+
+```sh
+npm run r2:check
+```
+
+Lệnh kiểm tra quyền đọc bucket, không upload hay xóa ảnh. Nếu trả `403`, kiểm
+tra Account ID, tên bucket và token được cấp đúng bucket. Khởi động lại BE sau
+khi sửa `.env`. Khi chưa cấu hình R2, vẫn có thể lưu nội dung công trình; API
+upload báo `503`, giao diện hiển thị khung chờ ảnh.
+
+Ảnh upload giới hạn 10 MB, tối đa 40 megapixel, được giải mã và chuyển WebP
+tối đa 2560 px trước khi ghi R2. Database chỉ lưu bucket/key/metadata. Nếu ghi
+metadata thất bại, BE thử dọn object vừa upload. Gỡ công trình không xóa object
+ảnh; ảnh upload nhưng chưa gắn vào công trình có thể cần dọn sau.
+
+Tham khảo: [R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/),
+[Public bucket URL](https://developers.cloudflare.com/r2/buckets/public-buckets/).
 
 ## Khởi tạo database
 
