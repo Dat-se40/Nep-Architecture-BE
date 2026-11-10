@@ -4,9 +4,9 @@ const test = require('node:test');
 const express = require('express');
 const createAuthRouter = require('../routes/auth');
 
-async function request(t, getUser, authorization, path = '/api/auth/me') {
+async function request(t, getUser, authorization, path = '/api/auth/me', resolveRole = async () => 'member') {
   const app = express();
-  app.use('/api/auth', createAuthRouter({ auth: { getUser } }));
+  app.use('/api/auth', createAuthRouter({ auth: { getUser } }, resolveRole));
 
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -42,7 +42,33 @@ test('uses the verified identity and only returns public identity fields', async
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(body, { user: { id: 'verified-user', email: 'user@example.com' } });
+  assert.deepEqual(body, { user: { id: 'verified-user', email: 'user@example.com', role: 'member' } });
+});
+
+test('resolves admin permissions for the verified user ID', async (t) => {
+  const { response, body } = await request(t, async () => ({
+    data: { user: { id: 'verified-admin', email: 'admin@example.com' } },
+    error: null,
+  }), 'Bearer token', '/api/auth/me?userId=someone-else&role=admin', async (userId) => {
+    assert.equal(userId, 'verified-admin');
+    return 'admin';
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(body.user.role, 'admin');
+});
+
+test('does not assign a role when the admin list is unavailable', async (t) => {
+  const { response, body } = await request(t, async () => ({
+    data: { user: { id: 'verified-user' } },
+    error: null,
+  }), 'Bearer token', '/api/auth/me', async () => {
+    throw new Error('Private upstream credentials or details');
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(body.user, undefined);
+  assert.equal(JSON.stringify(body).includes('Private upstream'), false);
 });
 
 test('rejects an invalid or expired token without leaking provider errors', async (t) => {

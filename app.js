@@ -4,17 +4,24 @@ const express = require("express");
 const cors = require('cors');
 const supabase = require('./configuration/supabase');
 const createAuthRouter = require('./routes/auth');
+const { createPublicProjectsRouter, createAdminProjectsRouter } = require('./routes/projects');
+const errorHandler = require('./middleware/error-handler');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+app.use(express.json({ limit: '1mb' }));
 
 app.get("/", (req, res) => {
   res.json({ status: 'ok' });
 });
 
 app.use('/api/auth', createAuthRouter(supabase));
+app.use('/api/projects', createPublicProjectsRouter(db));
+app.use('/api/admin', createAdminProjectsRouter(db, supabase));
+app.use((req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
+app.use(errorHandler);
 
 async function start() {
   await db.$connect();
@@ -45,8 +52,12 @@ async function start() {
   process.once('SIGTERM', shutdown);
 }
 
-start().catch(async (error) => {
-  console.error('Unable to connect to the database:', error.code || error.message);
-  await db.$disconnect();
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  start().catch(async (error) => {
+    console.error('Unable to connect to the database:', error.code || error.message);
+    await db.$disconnect();
+    process.exitCode = 1;
+  });
+}
+
+module.exports = app;
