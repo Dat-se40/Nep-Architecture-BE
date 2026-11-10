@@ -1,0 +1,239 @@
+generator client {
+  // JavaScript output for the existing CommonJS application.
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["nep"]
+}
+
+enum Publication {
+  draft
+  published
+  archived
+
+  @@map("publication")
+  @@schema("nep")
+}
+
+model Image {
+  id               BigInt            @id @default(autoincrement())
+  bucket           String            @db.Text
+  objectKey        String            @map("object_key") @db.Text
+  mime             String            @db.Text
+  bytes            BigInt
+  alt              String            @default("") @db.Text
+  credit           String            @default("") @db.Text
+  profiles         Profile[]
+  creators         Creator[]
+  articles         Article[]
+  projectImages    ProjectImage[]
+  submissionImages SubmissionImage[]
+
+  @@unique([bucket, objectKey])
+  @@map("images")
+  @@schema("nep")
+}
+
+model Profile {
+  // Supabase Auth owns this UUID. The auth.users FK is maintained in SQL.
+  id                  String       @id @db.Uuid
+  displayName         String       @map("display_name") @db.VarChar(60)
+  bio                 String       @default("") @db.VarChar(300)
+  avatarId            BigInt?      @map("avatar_id")
+  termsVersion        String       @map("terms_version") @db.Text
+  termsAcceptedAt     DateTime     @map("terms_accepted_at") @db.Timestamptz(6)
+  role                String       @default("member") @db.Text
+  avatar              Image?       @relation(fields: [avatarId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookmarks           Bookmark[]
+  collections         Collection[]
+  views               View[]
+  submissions         Submission[] @relation("Submitter")
+  reviewedSubmissions Submission[] @relation("Reviewer")
+
+  @@map("profiles")
+  @@schema("nep")
+}
+
+model Creator {
+  id          String    @id @db.Text
+  name        String    @db.Text
+  mark        String?   @db.Text
+  city        String?   @db.Text
+  kind        String?   @db.Text
+  description String?   @db.Text
+  philosophy  String?   @db.Text
+  tags        String[]
+  coverId     BigInt?   @map("cover_id")
+  cover       Image?    @relation(fields: [coverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  projects    Project[]
+
+  @@map("creators")
+  @@schema("nep")
+}
+
+model Project {
+  slug            String           @id @db.Text
+  name            String           @db.Text
+  creatorId       String           @map("creator_id") @db.Text
+  type            String           @db.Text
+  style           String           @db.Text
+  city            String           @db.Text
+  area            Decimal?         @db.Decimal
+  floors          Int?
+  beds            Int?
+  year            Int?
+  story           String?          @db.Text
+  status          Publication      @default(draft)
+  publishedAt     DateTime?        @map("published_at") @db.Timestamptz(6)
+  creator         Creator          @relation(fields: [creatorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  images          ProjectImage[]
+  bookmarks       Bookmark[]
+  collectionItems CollectionItem[]
+  views           View[]
+  submission      Submission?
+
+  // The published-only projects_latest index is maintained in SQL.
+  @@map("projects")
+  @@schema("nep")
+}
+
+model ProjectImage {
+  projectSlug String  @map("project_slug") @db.Text
+  position    Int
+  imageId     BigInt  @map("image_id")
+  project     Project @relation(fields: [projectSlug], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+  image       Image   @relation(fields: [imageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([projectSlug, position])
+  @@map("project_images")
+  @@schema("nep")
+}
+
+model Article {
+  slug            String           @id @db.Text
+  title           String           @db.Text
+  category        String           @db.Text
+  readingTime     String?          @map("reading_time") @db.Text
+  coverId         BigInt?          @map("cover_id")
+  excerpt         String?          @db.Text
+  intro           String?          @db.Text
+  sections        Json             @default("[]") @db.JsonB
+  status          Publication      @default(draft)
+  publishedAt     DateTime?        @map("published_at") @db.Timestamptz(6)
+  cover           Image?           @relation(fields: [coverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookmarks       Bookmark[]
+  collectionItems CollectionItem[]
+
+  @@map("articles")
+  @@schema("nep")
+}
+
+model Bookmark {
+  // Prisma needs a non-null primary key; target uniqueness stays as in the ERD.
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  projectSlug String?  @map("project_slug") @db.Text
+  articleSlug String?  @map("article_slug") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user        Profile  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  project     Project? @relation(fields: [projectSlug], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+  article     Article? @relation(fields: [articleSlug], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, projectSlug])
+  @@unique([userId, articleSlug])
+  @@map("bookmarks")
+  @@schema("nep")
+}
+
+model Collection {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  name        String           @db.VarChar(70)
+  description String           @default("") @db.VarChar(400)
+  user        Profile          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  items       CollectionItem[]
+
+  @@map("collections")
+  @@schema("nep")
+}
+
+model CollectionItem {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collectionId String     @map("collection_id") @db.Uuid
+  projectSlug  String?    @map("project_slug") @db.Text
+  articleSlug  String?    @map("article_slug") @db.Text
+  note         String     @default("") @db.VarChar(1000)
+  position     Int
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  project      Project?   @relation(fields: [projectSlug], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+  article      Article?   @relation(fields: [articleSlug], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([collectionId, projectSlug])
+  @@unique([collectionId, articleSlug])
+  @@map("collection_items")
+  @@schema("nep")
+}
+
+model View {
+  userId       String   @map("user_id") @db.Uuid
+  projectSlug  String   @map("project_slug") @db.Text
+  lastViewedAt DateTime @default(now()) @map("last_viewed_at") @db.Timestamptz(6)
+  user         Profile  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  project      Project  @relation(fields: [projectSlug], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([userId, projectSlug])
+  @@index([userId, lastViewedAt(sort: Desc)], map: "views_recent")
+  @@map("views")
+  @@schema("nep")
+}
+
+model Submission {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String            @map("user_id") @db.Uuid
+  name        String            @db.VarChar(100)
+  type        String            @db.Text
+  city        String            @db.VarChar(80)
+  creator     String?           @db.VarChar(100)
+  area        String?           @db.Text
+  story       String            @db.Text
+  credit      String?           @db.VarChar(1500)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviewerId  String?           @map("reviewer_id") @db.Uuid
+  reviewNote  String?           @map("review_note") @db.Text
+  projectSlug String?           @unique @map("project_slug") @db.Text
+  status      String            @default("draft") @db.Text
+  user        Profile           @relation("Submitter", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reviewer    Profile?          @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  project     Project?          @relation(fields: [projectSlug], references: [slug], onDelete: NoAction, onUpdate: NoAction)
+  images      SubmissionImage[]
+
+  @@map("submissions")
+  @@schema("nep")
+}
+
+model SubmissionImage {
+  submissionId String     @map("submission_id") @db.Uuid
+  position     Int
+  imageId      BigInt     @map("image_id")
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  image        Image      @relation(fields: [imageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([submissionId, position])
+  @@map("submission_images")
+  @@schema("nep")
+}
+
+model ContactMessage {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.Text
+  email     String   @db.Text
+  subject   String?  @db.Text
+  message   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("contact_messages")
+  @@schema("nep")
+}
