@@ -33,7 +33,8 @@ Express dùng SDK JavaScript `@supabase/supabase-js`. Bổ sung vào `.env`:
 ```dotenv
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:3000
+AUTH_REDIRECT_URL="http://localhost:3000/#/auth/callback"
 ```
 
 `FRONTEND_URL` phải khớp origin thực tế của frontend để gọi API qua CORS.
@@ -43,8 +44,10 @@ Google Client Secret được cấu hình ở Supabase Dashboard. Publishable ke
 dùng để xác minh qua `getUser`. `SUPABASE_SECRET_KEY` được BE dùng riêng để gọi
 Edge Function `admin-ids`; JWKS URL chưa cần cho cách xác minh hiện tại.
 
-Frontend đăng nhập Google hoặc email qua Supabase, lấy access token của phiên
-rồi gọi BE:
+Các thao tác email/mật khẩu của FE gọi API Express bên dưới. Supabase SDK ở FE
+giữ phiên và PKCE, dùng transport gửi request qua BE. Đăng nhập Google vẫn mở
+trang OAuth của Supabase; đổi code callback đi qua BE. Khi đã có access token,
+FE gọi API được bảo vệ như sau:
 
 ```js
 const response = await fetch('http://localhost:8080/api/auth/me', {
@@ -79,6 +82,57 @@ phỏng, không tạo tài khoản hoặc thay đổi dữ liệu thật. Cần 
 
 Tham khảo: [Khởi tạo JavaScript client](https://supabase.com/docs/reference/javascript/initializing),
 [Xác minh access token bằng getUser](https://supabase.com/docs/reference/javascript/auth-getuser).
+
+## API đăng nhập và mật khẩu
+
+Tất cả endpoint dưới `/api/auth` trả `Cache-Control: no-store`. BE dùng REST API
+Supabase với publishable key, không lưu mật khẩu hay phiên đăng nhập vào client
+Supabase dùng chung trên server. Không cần secret/service-role key cho các luồng
+này; secret key hiện tại vẫn chỉ phục vụ danh sách UUID admin.
+
+- `POST /api/auth/register`: `email`, `password` (8–128 ký tự), tùy chọn
+  `data.display_name`. Trả `201`; nếu cần xác nhận email thì chưa có session.
+- `POST /api/auth/login`: `email`, `password`; trả access/refresh token và user.
+  Gọi `GET /api/auth/me` để lấy role admin/member do BE xác minh.
+- `POST /api/auth/forgot-password`: gửi email khôi phục.
+- `POST /api/auth/resend-confirmation`: gửi lại xác nhận với `email`, `type=signup`.
+- `POST /api/auth/callback`: `auth_code`, `code_verifier`; đổi code lấy session.
+- `GET /api/auth/callback`: trang HTML dự phòng có link quay lại trang xác nhận,
+  đăng nhập hoặc trang chủ FE khi callback bị mở trực tiếp trên BE.
+- `POST /api/auth/verify-email`: `token_hash`, `type=signup|email|recovery` cho
+  email template dùng token hash. Supabase xác minh token trước khi trả session.
+- `GET /api/auth/user`: thông tin Supabase user đã xác minh, gồm metadata avatar.
+- `POST /api/auth/avatar`: Bearer token, multipart field `avatar`; mọi thành viên
+  đăng nhập đều được upload ảnh của chính mình, không cần quyền admin. Tối đa
+  5 MiB/40 megapixel. BE cắt vuông 512×512, chuyển WebP, lưu R2 trong
+  `<prefix>/avatars/<verified-user-id>/<UUID>.webp`, rồi cập nhật
+  `user_metadata.avatar_url` bằng token của chính người đó. Nếu cập nhật metadata
+  lỗi, xóa riêng object vừa tạo. Không nhận userId hay URL avatar từ client.
+- `POST /api/auth/refresh`: `refresh_token`; trả phiên mới.
+- `PUT /api/auth/password`: Bearer token và `password`; gửi `current_password`
+  khi đổi trong Cài đặt. BE xác minh mật khẩu cũ theo email từ token, kiểm tra
+  đúng chủ tài khoản rồi thu hồi riêng phiên xác minh tạm. Khi khôi phục email
+  hoặc đặt mật khẩu cho tài khoản Google, dùng phiên vừa xác thực và password.
+  Supabase vẫn áp dụng chính sách bảo mật/reauthentication của project.
+- `POST /api/auth/logout?scope=local`: thu hồi refresh token của phiên hiện tại;
+  có thể chọn `global` hoặc `others`. Trả `204`. Client xóa phiên local; JWT đã
+  phát hành vẫn có thể còn hợp lệ tới khi hết hạn theo cơ chế Supabase.
+
+Response đăng nhập/callback/refresh giữ định dạng session Supabase để SDK có thể
+lưu phiên và tự refresh. Mật khẩu không được trim. Body được kiểm tra bằng Zod,
+không nhận userId/role hoặc metadata phân quyền do client truyền vào.
+
+Đăng ký, gửi lại và quên mật khẩu nhận PKCE `code_challenge` và
+`code_challenge_method=s256` từ SDK. Verifier giữ tại trình duyệt và chỉ gửi lên
+API callback khi đổi code. Client tự viết cần quản lý cặp này nếu dùng PKCE.
+Query `redirect_to` chỉ nhận callback cố định đã cấu hình, không nhận URL tùy ý.
+Đặt `AUTH_REDIRECT_URL` giống callback FE và cho phép URL đó trong Supabase Auth.
+Nếu bỏ trống, BE suy ra từ `FRONTEND_URL`, mặc định local cổng 3000.
+
+Lỗi có `error` và `code`/`error_code` khi đến từ dịch vụ auth; không trả nguyên
+chi tiết lỗi nội bộ Supabase. HTTP `429` giữ `Retry-After`; lỗi kết nối trả `503`.
+Gửi email thật phụ thuộc SMTP/rate limit của project. Các test auth dùng HTTP
+Supabase giả lập, không tạo user hoặc gửi email thật.
 
 ## Tài liệu API với Scalar
 
@@ -142,8 +196,9 @@ PostgreSQL tạm qua PGlite và Prisma, không tạo công trình trong Supabase
 
 ## Cấu hình Cloudflare R2 cho ảnh công trình
 
-Giai đoạn này chỉ admin upload ảnh công khai qua BE. Cơ chế ảnh riêng tư cho hồ
-sơ người dùng chờ duyệt sẽ được làm cùng luồng submissions.
+Admin upload ảnh công trình công khai qua BE; thành viên đăng nhập được upload
+avatar của chính mình qua `/api/auth/avatar`. Cơ chế ảnh riêng tư cho hồ sơ
+người dùng chờ duyệt sẽ được làm cùng luồng submissions.
 
 1. Dùng bucket R2 gốc hiện có, ví dụ `nep-architecture`. Thư mục `nep-media`
    bên trong là prefix của object key, không phải tên bucket.

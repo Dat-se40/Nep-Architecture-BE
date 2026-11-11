@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const validation = require('../validation/projects');
 const { version } = require('../package.json');
+const authDocumentation = require('./auth-openapi');
 
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties) });
@@ -74,8 +75,9 @@ module.exports = {
     { name: 'Media', description: 'Chỉ admin: upload ảnh công trình lên Cloudflare R2.' },
   ],
   paths: {
+    ...authDocumentation.paths,
     '/': {
-      get: { tags: ['Health'], operationId: 'getHealth', summary: 'Kiểm tra ứng dụng', responses: responses({ 200: jsonResponse('Ứng dụng đang chạy.', object({ status: { type: 'string', const: 'ok' } })) }) },
+      get: { tags: ['Health'], operationId: 'getHealth', summary: 'Kiểm tra ứng dụng', responses: responses({ 200: { description: 'JSON cho API client; trang hướng dẫn quay về FE nếu mở bằng trình duyệt hoặc callback email trỏ về gốc BE.', content: { 'application/json': { schema: object({ status: { type: 'string', const: 'ok' } }) }, 'text/html': { schema: { type: 'string' } } } } }) },
     },
     '/api/auth/me': {
       get: {
@@ -156,7 +158,8 @@ module.exports = {
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Nhập access_token của phiên Supabase sau khi đăng nhập ở FE. Scalar tự thêm tiền tố Bearer.' } },
     schemas: {
-      Error: { type: 'object', required: ['error'], properties: { error: { type: 'string' }, fields: { type: 'object', additionalProperties: array({ type: 'string' }), description: 'Lỗi theo tên trường khi Zod kiểm tra dữ liệu.' } } },
+      ...authDocumentation.schemas,
+      Error: { type: 'object', required: ['error'], properties: { error: { type: 'string' }, code: { type: 'string' }, error_code: { type: 'string' }, fields: { type: 'object', additionalProperties: array({ type: 'string' }), description: 'Lỗi theo tên trường khi Zod kiểm tra dữ liệu.' } } },
       CreateProject: createProject,
       UpdateProject: updateProject,
       CreateCreator: inputSchema(validation.createCreator),

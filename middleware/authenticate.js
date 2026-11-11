@@ -24,6 +24,7 @@ function authenticate(supabase) {
       }
 
       req.user = data.user;
+      req.accessToken = match[1];
       return next();
     } catch {
       return res.status(503).json({ error: 'Authentication service is temporarily unavailable.' });

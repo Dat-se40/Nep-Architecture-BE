@@ -9,14 +9,18 @@ const createMediaRouter = require('./routes/media');
 const errorHandler = require('./middleware/error-handler');
 const { apiReference } = require('@scalar/express-api-reference');
 const openapi = require('./docs/openapi');
+const authLanding = require('./routes/auth-landing');
+const browserLanding = authLanding(`${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/#/auth/callback`);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get("/", (req, res) => {
+  // If a provider's Site URL points at BE, show links rather than a blank JSON page.
+  if (req.accepts(['json', 'html']) === 'html' || req.query.code || req.query.error || req.query.token_hash) return browserLanding(req, res);
   res.json({ status: 'ok' });
 });
 
